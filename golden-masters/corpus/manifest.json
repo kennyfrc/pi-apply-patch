@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "privacy": "synthetic patch data only — no source code, sessions, or credentials",
+  "cases": [
+    {
+      "name": "apply-patch",
+      "file": "apply-patch.golden.txt",
+      "kind": "end-to-end characterization",
+      "scenarios": 1,
+      "covers": ["Add File", "Update File (hunk)", "Move to (rename + update)", "Delete File"]
+    },
+    {
+      "name": "apply-patch-matching",
+      "file": "apply-patch.matching.golden.txt",
+      "kind": "matching-tier characterization with trace",
+      "scenarios": 13,
+      "covers": [
+        "exact_match",
+        "trim_end_match",
+        "trim_match",
+        "confusable_match",
+        "invisible_char_match",
+        "whitespace_normalized",
+        "unescaped_match",
+        "fuzzy_match (threshold 0.8)",
+        "context_match (@@ header)",
+        "insert_at_eof",
+        "pattern_trimmed_for_eof",
+        "add_delete",
+        "missing_lines (compute error path)"
+      ]
+    }
+  ]
+}

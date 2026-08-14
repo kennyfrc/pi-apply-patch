@@ -1,0 +1,47 @@
+{
+  "name": "pi-apply-patch",
+  "version": "0.1.0",
+  "description": "OpenAI Codex apply_patch file-editing tool for GPT models on Pi",
+  "keywords": [
+    "pi-package",
+    "apply_patch",
+    "openai",
+    "gpt",
+    "codex"
+  ],
+  "license": "MIT",
+  "author": "Kenn Costales",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kennyfrc/pi-apply-patch.git"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pi-portable-ui": "git+https://github.com/kennyfrc/pi-portable-ui.git#v0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4",
+    "@types/node": "^22.0.0",
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-tui": "0.80.10",
+    "typebox": "*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

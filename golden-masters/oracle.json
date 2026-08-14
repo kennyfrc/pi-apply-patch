@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "oracleRepository": "pi-mono-kenn-dev",
+  "oracleCommit": "20b3f0f5cdb542c65bf0b4275828dfae6359d79f",
+  "capturedAt": "2026-07-26",
+  "files": [
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch.ts",
+      "sha256": "5f6f72d8ec639b4edd7a20e4e4058f0c911ef5f8865cda91f1a83034986da144",
+      "role": "tool definition (AgentTool): before-snapshot undo capture + runApplyPatchBinary + after-hash finalize"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/parse.ts",
+      "sha256": "95686dedd9e7977604553c4abc61cd676914138abb90e3035a1aac71758c3c50",
+      "role": "lightweight op extractor (Add/Update/Delete/Move) used by undo — not the engine parser"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/runner.ts",
+      "sha256": "bca1386afb6b8ff9225e978a4a9267f3644d3599de9992d43dcecaf8cbc8a821",
+      "role": "thin wrapper around the in-process engine"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/engine.ts",
+      "sha256": "c97eb78c79643c11ea068b5dc91a51807476f7dcad72759742dadffcc939482b",
+      "role": "pure-TS reimplementation of OpenAI's apply_patch binary: parse + fuzzy/whitespace matching + apply"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/characterization.ts",
+      "sha256": "cda627fa937ae3226b8ad1532696405912c7c25f73e80be25ba1abca134ad4ce",
+      "role": "end-to-end characterization harness (add/update/move/delete) over a sandbox"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/matching-characterization.ts",
+      "sha256": "323cda5ae94906705d7af76167da592ca5a4422e9e0c327a06767a1bce330d9e",
+      "role": "per-seek-tier matching characterization (exact/trim/trimEnd/confusable/invisible/whitespace/unescaped/fuzzy/context/eof/missing) with trace"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/__fixtures__/apply-patch.golden.txt",
+      "sha256": "3e33155a2812aff68b5aff7b06200e75ff016844aa6b896ceaee38500a566261",
+      "role": "frozen end-to-end characterization output"
+    },
+    {
+      "path": "packages/coding-agent/src/tools/apply-patch/__fixtures__/apply-patch.matching.golden.txt",
+      "sha256": "864662d6cd7e5292027fd91827db10f048889e463a39601bedd5ba186438478a",
+      "role": "frozen matching characterization output (13 scenarios with seek traces)"
+    },
+    {
+      "path": "packages/coding-agent/src/prompts/tools.yaml",
+      "sha256": "25d31bcce24617d170d5b6c4053df7115d532f85ead589b4f8235f9de2a49f16",
+      "role": "apply_patch tool description text (the model contract), ported verbatim into src/prompt.ts"
+    }
+  ],
+  "inventory": {
+    "characterizationScenarios": 1,
+    "matchingScenarios": 13,
+    "seekTiers": [
+      "exact",
+      "trimEnd",
+      "trim",
+      "unescaped",
+      "normalized (confusables + invisible)",
+      "whitespace-normalized",
+      "indentation-normalized",
+      "fuzzy (Levenshtein, threshold 0.8)"
+    ],
+    "hunkTypes": ["Add File", "Delete File", "Update File (+ optional Move to)"],
+    "externalDeps": "none — engine/parse/runner/characterization use only node:fs, node:path, node:os"
+  }
+}
