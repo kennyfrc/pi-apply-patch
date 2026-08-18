@@ -114,7 +114,7 @@ class ApplyPatchParseError extends Error {
     constructor(kind: "invalid_patch" | "invalid_hunk", message: string, lineNumber?: number) {
         super(message);
         this.kind = kind;
-        this.lineNumber = lineNumber;
+        if (lineNumber !== undefined) this.lineNumber = lineNumber;
     }
 }
 
@@ -186,7 +186,7 @@ function stripCommonIndent(lines: string[]): string[] {
     const minIndent = Math.min(
         ...nonEmptyLines.map((line) => {
             const match = line.match(/^(\s*)/);
-            return match ? match[1].length : 0;
+            return match?.[1]?.length ?? 0;
         }),
     );
     return lines.map((line) => (line.trim().length === 0 ? line : line.slice(minIndent)));
@@ -256,11 +256,11 @@ function levenshteinDistance(a: string, b: string): number {
     for (let j = 1; j <= b.length; j += 1) {
         for (let i = 1; i <= a.length; i += 1) {
             const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
-            matrix[j][i] = Math.min(matrix[j][i - 1] + 1, matrix[j - 1][i] + 1, matrix[j - 1][i - 1] + indicator);
+            matrix[j]![i] = Math.min(matrix[j]![i - 1]! + 1, matrix[j - 1]![i]! + 1, matrix[j - 1]![i - 1]! + indicator);
         }
     }
 
-    return matrix[b.length][a.length];
+    return matrix[b.length]![a.length]!;
 }
 
 function lineSimilarity(a: string, b: string): number {
@@ -290,8 +290,10 @@ function splitPatchLines(patch: string): string[] {
 }
 
 function checkPatchBoundariesStrict(lines: string[]): void {
-    const firstLine = lines.length > 0 ? lines[0].trim() : null;
-    const lastLine = lines.length > 0 ? lines[lines.length - 1].trim() : null;
+    const first = lines[0];
+    const last = lines[lines.length - 1];
+    const firstLine = first?.trim() ?? null;
+    const lastLine = last?.trim() ?? null;
 
     if (firstLine === BEGIN_PATCH_MARKER && lastLine === END_PATCH_MARKER) {
         return;
@@ -306,7 +308,7 @@ function checkPatchBoundariesLenient(lines: string[], originalError: ApplyPatchP
     if (lines.length >= 4) {
         const first = lines[0];
         const last = lines[lines.length - 1];
-        if (HEREDOC_STARTS.has(first) && last.endsWith("EOF")) {
+        if (first !== undefined && last !== undefined && HEREDOC_STARTS.has(first) && last.endsWith("EOF")) {
             const innerLines = lines.slice(1, -1);
             checkPatchBoundariesStrict(innerLines);
             return innerLines;
@@ -385,20 +387,23 @@ function parseOneHunk(
         let parsedLines = 1;
 
         let movePath: string | null = null;
-        if (remainingLines[0]?.startsWith(MOVE_TO_MARKER)) {
-            movePath = remainingLines[0].slice(MOVE_TO_MARKER.length);
+        const firstRemaining = remainingLines[0];
+        if (firstRemaining?.startsWith(MOVE_TO_MARKER)) {
+            movePath = firstRemaining.slice(MOVE_TO_MARKER.length);
             remainingLines = remainingLines.slice(1);
             parsedLines += 1;
         }
 
         const chunks: UpdateFileChunk[] = [];
         while (remainingLines.length > 0) {
-            if (remainingLines[0].trim().length === 0) {
+            const next = remainingLines[0];
+            if (next === undefined) break;
+            if (next.trim().length === 0) {
                 parsedLines += 1;
                 remainingLines = remainingLines.slice(1);
                 continue;
             }
-            if (remainingLines[0].startsWith("***")) {
+            if (next.startsWith("***")) {
                 break;
             }
 
@@ -443,16 +448,20 @@ function parseUpdateFileChunk(
 
     let changeContext: string | null = null;
     let startIndex = 0;
-    if (lines[0] === EMPTY_CHANGE_CONTEXT_MARKER) {
+    const firstLine = lines[0];
+    if (firstLine === undefined) {
+        throw new ApplyPatchParseError("invalid_hunk", "Update hunk does not contain any lines", lineNumber);
+    }
+    if (firstLine === EMPTY_CHANGE_CONTEXT_MARKER) {
         changeContext = null;
         startIndex = 1;
-    } else if (lines[0].startsWith(CHANGE_CONTEXT_MARKER)) {
-        changeContext = lines[0].slice(CHANGE_CONTEXT_MARKER.length);
+    } else if (firstLine.startsWith(CHANGE_CONTEXT_MARKER)) {
+        changeContext = firstLine.slice(CHANGE_CONTEXT_MARKER.length);
         startIndex = 1;
     } else if (!allowMissingContext) {
         throw new ApplyPatchParseError(
             "invalid_hunk",
-            `Expected update hunk to start with a @@ context marker, got: '${lines[0]}'`,
+            `Expected update hunk to start with a @@ context marker, got: '${firstLine}'`,
             lineNumber,
         );
     }
@@ -553,7 +562,7 @@ function findSequenceWithComparator(
     for (let i = searchStart; i <= lastIndex; i += 1) {
         let ok = true;
         for (let p = 0; p < pattern.length; p += 1) {
-            if (!compare(lines[i + p], pattern[p])) {
+            if (!compare(lines[i + p]!, pattern[p]!)) {
                 ok = false;
                 break;
             }
@@ -575,7 +584,7 @@ function findSequenceWithNormalizer(
     for (let i = searchStart; i <= lastIndex; i += 1) {
         let ok = true;
         for (let p = 0; p < patternNormalized.length; p += 1) {
-            if (normalizeLine(lines[i + p]) !== patternNormalized[p]) {
+            if (normalizeLine(lines[i + p]!) !== patternNormalized[p]!) {
                 ok = false;
                 break;
             }
@@ -616,7 +625,7 @@ function findSequenceFuzzy(
     for (let i = searchStart; i <= lastIndex; i += 1) {
         let scoreSum = 0;
         for (let p = 0; p < pattern.length; p += 1) {
-            scoreSum += lineSimilarity(lines[i + p], pattern[p]);
+            scoreSum += lineSimilarity(lines[i + p]!, pattern[p]!);
         }
         const score = scoreSum / pattern.length;
         if (score > bestScore) {
@@ -822,7 +831,9 @@ function computeReplacements(
 function applyReplacements(lines: string[], replacements: Replacement[]): string[] {
     const updated = [...lines];
     for (let i = replacements.length - 1; i >= 0; i -= 1) {
-        const [startIndex, oldLen, newLines] = replacements[i];
+        const replacement = replacements[i];
+        if (replacement === undefined) continue;
+        const [startIndex, oldLen, newLines] = replacement;
         for (let removal = 0; removal < oldLen; removal += 1) {
             if (startIndex < updated.length) {
                 updated.splice(startIndex, 1);

@@ -49,11 +49,11 @@ export const applyPatchTool: ToolDefinition<typeof applyPatchParameters, ApplyPa
     const cwd = cwdFromContext(ctx);
     const parsed = parseApplyPatchInput(input);
 
-    const result = await runApplyPatchBinary({
-      patch: input,
-      cwd,
-      signal,
-    });
+    const result = await runApplyPatchBinary(
+      signal === undefined
+        ? { patch: input, cwd }
+        : { patch: input, cwd, signal },
+    );
 
     if (result.exitCode !== 0 && result.exitCode !== null) {
       const combined = [result.stdout, result.stderr].filter((value) => value.length > 0).join("\n");

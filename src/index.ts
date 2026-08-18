@@ -3,27 +3,15 @@
  * only for GPT-family models, where it replaces the built-in `edit` and
  * `write` tools.
  *
- * Golden master: golden-masters/ freezes the engine behavior.
+ * Golden master: golden-masters/apply-patch/ freezes the engine behavior.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { hasTerminalUi } from "pi-portable-ui";
 import { applyPatchTool } from "./tool.js";
 import {
   desiredActiveTools,
-  isGptModel,
-  loadConfig,
   resetConfigCache,
   shouldBlockEditWrite,
 } from "./gate.js";
-
-const STATUS_KEY = "pi-apply-patch";
-
-function describeMode(ctx: ExtensionContext): string {
-  const { mode } = loadConfig();
-  if (mode === "off") return "apply_patch off";
-  const gpt = isGptModel(ctx.model);
-  return gpt ? "apply_patch on (GPT, edit/write disabled)" : "edit/write on";
-}
 
 /**
  * Apply the GPT/non-GPT tool swap. Reads the live active set, computes the
@@ -35,7 +23,6 @@ function applyGating(pi: ExtensionAPI, ctx: ExtensionContext): void {
   const next = desiredActiveTools(ctx.model, current);
   if (!next) return;
   pi.setActiveTools(next);
-  if (hasTerminalUi(ctx)) ctx.ui.setStatus(STATUS_KEY, describeMode(ctx));
 }
 
 export default function applyPatchExtension(pi: ExtensionAPI): void {

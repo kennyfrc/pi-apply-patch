@@ -48,7 +48,10 @@ export function parseApplyPatchInput(input: string): ApplyPatchParseResult {
         const movePath = extractPath(line, MOVE_PREFIX);
         if (movePath) {
             if (lastUpdateIndex !== null) {
-                ops[lastUpdateIndex] = { ...ops[lastUpdateIndex], movedTo: movePath };
+                const target = ops[lastUpdateIndex];
+                if (target !== undefined) {
+                    ops[lastUpdateIndex] = { ...target, movedTo: movePath };
+                }
             }
             continue;
         }
