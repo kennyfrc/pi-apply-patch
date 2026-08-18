@@ -1,6 +1,6 @@
 {
   "name": "pi-apply-patch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenAI Codex apply_patch file-editing tool for GPT models on Pi",
   "keywords": [
     "pi-package",
