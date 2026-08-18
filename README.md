@@ -5,11 +5,8 @@ models, where it replaces the built-in `edit` and `write` tools.
 
 ## Install
 
-This package is not published to npm. Clone this repo and install the checkout:
-
 ```bash
-git clone https://github.com/kennyfrc/pi-apply-patch
-pi install ./pi-apply-patch
+pi install npm:pi-apply-patch
 ```
 
 Config lives in `~/.pi/agent/pi-apply-patch.json`. Omit it for the default

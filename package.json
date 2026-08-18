@@ -12,6 +12,9 @@
   "license": "MIT",
   "author": "Kenn Costales",
   "type": "module",
+  "files": [
+    "src"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kennyfrc/pi-apply-patch.git"
