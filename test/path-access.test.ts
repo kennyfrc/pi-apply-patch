@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runApplyPatchEngine } from "../src/engine.js";
 
-// Ported verbatim from pi-mono-kenn-dev .../apply-patch/path-access.test.ts.
+// Ported verbatim from the reference implementation's apply-patch path-access tests.
 // These assert the engine's path model matches edit/write: ~ expands, relative
 // paths resolve from cwd and may escape it, symlinks are followed.
 describe("apply-patch engine path access", () => {

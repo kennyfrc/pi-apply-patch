@@ -1,5 +1,5 @@
 // Regenerates corpus/apply-patch.matching.golden.txt from the package engine.
-// Mirrors pi-mono-kenn-dev .../apply-patch/generate-matching-golden-master.ts.
+// Mirrors the original characterization generator in the reference implementation.
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,9 +1,9 @@
 /**
  * Model-gating for the apply_patch extension.
  *
- * Ported concept: in the JDC fork (pi-mono-kenn-dev
- * packages/coding-agent/dist/tools/tool-selection.js) the "apply_patch replaces
- * edit/write" mode is exactly `resolvedNames.includes("apply_patch") &&
+ * Ported concept: in the reference implementation's tool selection, the
+ * "apply_patch replaces edit/write" mode is exactly
+ * `resolvedNames.includes("apply_patch") &&
  * !resolvedNames.includes("edit")`. This extension reproduces that swap on Pi
  * using pi.setActiveTools, gated to GPT-family models so non-GPT models (e.g. a
  * GLM model served over an OpenAI-compatible router) keep edit/write.

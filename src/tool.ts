@@ -1,9 +1,8 @@
 /**
  * apply_patch tool definition for Pi.
  *
- * The execute body (parse → runApplyPatchBinary) is ported from the JDC fork
- * packages/coding-agent/src/tools/apply-patch.ts) at commit
- * 20b3f0f5cdb542c65bf0b4275828dfae6359d79f. Only the host glue differs:
+ * The execute body (parse → runApplyPatchBinary) is ported from the reference
+ * implementation's apply-patch tool. Only the host glue differs:
  * AgentTool -> pi ToolDefinition, @sinclair/typebox -> typebox, prompt is
  * inlined from ./prompt.ts, and cwd is taken from ctx (falling back to
  * process.cwd() to match the original characterization harness).

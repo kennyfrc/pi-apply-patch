@@ -3,8 +3,7 @@
  * only for GPT-family models, where it replaces the built-in `edit` and
  * `write` tools.
  *
- * Golden master: golden-masters/apply-patch/ freezes the engine behavior.
- * Design doc + call graph: devdocs/designs/apply-patch-extension.html.
+ * Golden master: golden-masters/ freezes the engine behavior.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { hasTerminalUi } from "pi-portable-ui";

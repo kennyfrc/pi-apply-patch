@@ -1,7 +1,6 @@
 /**
- * apply_patch tool description, ported verbatim from the JDC fork
- * (pi-mono-kenn-dev packages/coding-agent/src/prompts/tools.yaml) at commit
- * 20b3f0f5cdb542c65bf0b4275828dfae6359d79f. This text IS the tool's contract
+ * apply_patch tool description, ported verbatim from the reference
+ * implementation's tools.yaml prompt. This text IS the tool's contract
  * with the model — do not paraphrase it.
  */
 export const APPLY_PATCH_DESCRIPTION = `Use the \`apply_patch\` tool to edit files.

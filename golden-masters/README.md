@@ -12,8 +12,7 @@ sanitize and nothing to redact; the corpus is safe to commit verbatim.
 
 ## Source
 
-Captured from the JDC fork `pi-mono-kenn-dev` at commit
-`20b3f0f5cdb542c65bf0b4275828dfae6359d79f` (2026-07-18). `oracle.json` records
+Captured from a reference implementation on 2026-07-18. `oracle.json` records
 every source file and its SHA-256. The engine is a pure-TypeScript
 reimplementation of OpenAI's `apply_patch` binary — it takes a patch string and a
 `cwd` and returns `{ exitCode, stdout, stderr }`. It has **no external runtime
@@ -34,7 +33,7 @@ change to matcher order, threshold, or normalization surfaces as a diff here.
 
 ## Files
 
-- `oracle.json` — exact source commit, file paths, SHA-256 hashes, and roles.
+- `oracle.json` — source file paths, SHA-256 hashes, and roles.
 - `corpus/apply-patch.golden.txt` — frozen end-to-end characterization output.
 - `corpus/apply-patch.matching.golden.txt` — frozen matching-tier output.
 - `corpus/manifest.json` — machine-readable case index.

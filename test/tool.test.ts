@@ -8,7 +8,7 @@ import { runApplyPatchCharacterizationWithRunner } from "../src/characterization
 import type { ApplyPatchRunOptions, ApplyPatchRunResult } from "../src/runner.js";
 import { applyPatchTool } from "../src/tool.js";
 
-// Ported from pi-mono-kenn-dev .../apply-patch.tool.test.ts. Runs the actual
+// Ported from the reference implementation's apply-patch tool tests. Runs the actual
 // tool (not the raw engine) through the characterization harness and checks
 // it produces the same golden output — proving the ToolDefinition glue
 // (ctx.cwd resolution, content extraction, error→exitCode mapping) preserves
