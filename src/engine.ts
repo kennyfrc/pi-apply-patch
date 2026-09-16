@@ -352,81 +352,116 @@ function parsePatchText(patch: string, trace?: ApplyPatchTrace): ApplyPatchArgs 
     };
 }
 
+type ParsedHunk = { hunk: Hunk; linesParsed: number };
+
+type HunkParser = (firstLine: string, lines: string[], lineNumber: number, trace?: ApplyPatchTrace) => ParsedHunk;
+
+function parseAddFileHunk(
+    firstLine: string,
+    lines: string[],
+    _lineNumber: number,
+    trace?: ApplyPatchTrace,
+): ParsedHunk {
+    const path = firstLine.slice(ADD_FILE_MARKER.length);
+    let contents = "";
+    let parsedLines = 1;
+    for (const addLine of lines.slice(1)) {
+        if (addLine.startsWith("+")) {
+            contents += `${addLine.slice(1)}\n`;
+            parsedLines += 1;
+        } else {
+            break;
+        }
+    }
+    traceLine(trace, `hunk:add path=${path} lines=${parsedLines - 1}`);
+    return {
+        hunk: { type: "add", path, contents },
+        linesParsed: parsedLines,
+    };
+}
+
+function parseDeleteFileHunk(
+    firstLine: string,
+    _lines: string[],
+    _lineNumber: number,
+    trace?: ApplyPatchTrace,
+): ParsedHunk {
+    const path = firstLine.slice(DELETE_FILE_MARKER.length);
+    traceLine(trace, `hunk:delete path=${path}`);
+    return { hunk: { type: "delete", path }, linesParsed: 1 };
+}
+
+function parseUpdateFileHunk(
+    firstLine: string,
+    lines: string[],
+    lineNumber: number,
+    trace?: ApplyPatchTrace,
+): ParsedHunk {
+    const path = firstLine.slice(UPDATE_FILE_MARKER.length);
+    let remainingLines = lines.slice(1);
+    let parsedLines = 1;
+
+    let movePath: string | null = null;
+    const firstRemaining = remainingLines[0];
+    if (firstRemaining?.startsWith(MOVE_TO_MARKER)) {
+        movePath = firstRemaining.slice(MOVE_TO_MARKER.length);
+        remainingLines = remainingLines.slice(1);
+        parsedLines += 1;
+    }
+
+    const chunks: UpdateFileChunk[] = [];
+    while (remainingLines.length > 0) {
+        const next = remainingLines[0];
+        if (next === undefined) break;
+        if (next.trim().length === 0) {
+            parsedLines += 1;
+            remainingLines = remainingLines.slice(1);
+            continue;
+        }
+        if (next.startsWith("***")) {
+            break;
+        }
+
+        const { chunk, linesParsed } = parseUpdateFileChunk(
+            remainingLines,
+            lineNumber + parsedLines,
+            chunks.length === 0,
+            trace,
+        );
+        chunks.push(chunk);
+        parsedLines += linesParsed;
+        remainingLines = remainingLines.slice(linesParsed);
+    }
+
+    if (chunks.length === 0) {
+        throw new ApplyPatchParseError("invalid_hunk", `Update file hunk for path '${path}' is empty`, lineNumber);
+    }
+
+    traceLine(trace, `hunk:update path=${path} move=${movePath ?? "<none>"} chunks=${chunks.length}`);
+    return {
+        hunk: { type: "update", path, movePath, chunks },
+        linesParsed: parsedLines,
+    };
+}
+
+// One row per hunk header; a new hunk kind is a row plus its parser, not
+// another arm in the reader.
+const HUNK_PARSERS: ReadonlyArray<{ marker: string; parse: HunkParser }> = [
+    { marker: ADD_FILE_MARKER, parse: parseAddFileHunk },
+    { marker: DELETE_FILE_MARKER, parse: parseDeleteFileHunk },
+    { marker: UPDATE_FILE_MARKER, parse: parseUpdateFileHunk },
+];
+
 function parseOneHunk(
     lines: string[],
     lineNumber: number,
     trace?: ApplyPatchTrace,
-): { hunk: Hunk; linesParsed: number } {
+): ParsedHunk {
     const firstLine = lines[0]?.trim() ?? "";
-    if (firstLine.startsWith(ADD_FILE_MARKER)) {
-        const path = firstLine.slice(ADD_FILE_MARKER.length);
-        let contents = "";
-        let parsedLines = 1;
-        for (const addLine of lines.slice(1)) {
-            if (addLine.startsWith("+")) {
-                contents += `${addLine.slice(1)}\n`;
-                parsedLines += 1;
-            } else {
-                break;
-            }
+    for (const header of HUNK_PARSERS) {
+        if (firstLine.startsWith(header.marker)) {
+            return header.parse(firstLine, lines, lineNumber, trace);
         }
-        traceLine(trace, `hunk:add path=${path} lines=${parsedLines - 1}`);
-        return {
-            hunk: { type: "add", path, contents },
-            linesParsed: parsedLines,
-        };
-    }
-    if (firstLine.startsWith(DELETE_FILE_MARKER)) {
-        const path = firstLine.slice(DELETE_FILE_MARKER.length);
-        traceLine(trace, `hunk:delete path=${path}`);
-        return { hunk: { type: "delete", path }, linesParsed: 1 };
-    }
-    if (firstLine.startsWith(UPDATE_FILE_MARKER)) {
-        const path = firstLine.slice(UPDATE_FILE_MARKER.length);
-        let remainingLines = lines.slice(1);
-        let parsedLines = 1;
-
-        let movePath: string | null = null;
-        const firstRemaining = remainingLines[0];
-        if (firstRemaining?.startsWith(MOVE_TO_MARKER)) {
-            movePath = firstRemaining.slice(MOVE_TO_MARKER.length);
-            remainingLines = remainingLines.slice(1);
-            parsedLines += 1;
-        }
-
-        const chunks: UpdateFileChunk[] = [];
-        while (remainingLines.length > 0) {
-            const next = remainingLines[0];
-            if (next === undefined) break;
-            if (next.trim().length === 0) {
-                parsedLines += 1;
-                remainingLines = remainingLines.slice(1);
-                continue;
-            }
-            if (next.startsWith("***")) {
-                break;
-            }
-
-            const { chunk, linesParsed } = parseUpdateFileChunk(
-                remainingLines,
-                lineNumber + parsedLines,
-                chunks.length === 0,
-                trace,
-            );
-            chunks.push(chunk);
-            parsedLines += linesParsed;
-            remainingLines = remainingLines.slice(linesParsed);
-        }
-
-        if (chunks.length === 0) {
-            throw new ApplyPatchParseError("invalid_hunk", `Update file hunk for path '${path}' is empty`, lineNumber);
-        }
-
-        traceLine(trace, `hunk:update path=${path} move=${movePath ?? "<none>"} chunks=${chunks.length}`);
-        return {
-            hunk: { type: "update", path, movePath, chunks },
-            linesParsed: parsedLines,
-        };
     }
 
     throw new ApplyPatchParseError(
@@ -434,6 +469,81 @@ function parseOneHunk(
         `'${firstLine}' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'`,
         lineNumber,
     );
+}
+
+function readChunkHeader(
+    lines: string[],
+    lineNumber: number,
+    allowMissingContext: boolean,
+): { changeContext: string | null; startIndex: number } {
+    const firstLine = lines[0];
+    if (firstLine === undefined || firstLine === EMPTY_CHANGE_CONTEXT_MARKER) {
+        return { changeContext: null, startIndex: 1 };
+    }
+    if (firstLine.startsWith(CHANGE_CONTEXT_MARKER)) {
+        return { changeContext: firstLine.slice(CHANGE_CONTEXT_MARKER.length), startIndex: 1 };
+    }
+    if (!allowMissingContext) {
+        throw new ApplyPatchParseError(
+            "invalid_hunk",
+            `Expected update hunk to start with a @@ context marker, got: '${firstLine}'`,
+            lineNumber,
+        );
+    }
+    return { changeContext: null, startIndex: 0 };
+}
+
+type ChunkLineReader = (chunk: UpdateFileChunk, line: string) => void;
+
+// Keyed by the line's first character. "" is the blank line, which contributes
+// an empty line to both sides of the diff.
+const CHUNK_LINE_READERS: Readonly<Record<string, ChunkLineReader>> = {
+    "": (chunk) => {
+        chunk.oldLines.push("");
+        chunk.newLines.push("");
+    },
+    " ": (chunk, line) => {
+        chunk.oldLines.push(line.slice(1));
+        chunk.newLines.push(line.slice(1));
+    },
+    "+": (chunk, line) => {
+        chunk.newLines.push(line.slice(1));
+    },
+    "-": (chunk, line) => {
+        chunk.oldLines.push(line.slice(1));
+    },
+};
+
+function readChunkBody(
+    chunk: UpdateFileChunk,
+    bodyLines: string[],
+    lineNumber: number,
+): number {
+    let parsedLines = 0;
+    for (const line of bodyLines) {
+        if (line === EOF_MARKER) {
+            if (parsedLines === 0) {
+                throw new ApplyPatchParseError("invalid_hunk", "Update hunk does not contain any lines", lineNumber + 1);
+            }
+            chunk.isEndOfFile = true;
+            return parsedLines + 1;
+        }
+
+        const reader = CHUNK_LINE_READERS[line[0] ?? ""];
+        if (reader === undefined) {
+            if (parsedLines === 0) {
+                throw new ApplyPatchParseError(
+                    "invalid_hunk",
+                    `Unexpected line found in update hunk: '${line}'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)`,
+                    lineNumber + 1,
+                );
+            }
+            return parsedLines;
+        }
+        reader(chunk, line);
+        parsedLines += 1;
+    }
+    return parsedLines;
 }
 
 function parseUpdateFileChunk(
@@ -446,26 +556,7 @@ function parseUpdateFileChunk(
         throw new ApplyPatchParseError("invalid_hunk", "Update hunk does not contain any lines", lineNumber);
     }
 
-    let changeContext: string | null = null;
-    let startIndex = 0;
-    const firstLine = lines[0];
-    if (firstLine === undefined) {
-        throw new ApplyPatchParseError("invalid_hunk", "Update hunk does not contain any lines", lineNumber);
-    }
-    if (firstLine === EMPTY_CHANGE_CONTEXT_MARKER) {
-        changeContext = null;
-        startIndex = 1;
-    } else if (firstLine.startsWith(CHANGE_CONTEXT_MARKER)) {
-        changeContext = firstLine.slice(CHANGE_CONTEXT_MARKER.length);
-        startIndex = 1;
-    } else if (!allowMissingContext) {
-        throw new ApplyPatchParseError(
-            "invalid_hunk",
-            `Expected update hunk to start with a @@ context marker, got: '${firstLine}'`,
-            lineNumber,
-        );
-    }
-
+    const { changeContext, startIndex } = readChunkHeader(lines, lineNumber, allowMissingContext);
     if (startIndex >= lines.length) {
         throw new ApplyPatchParseError("invalid_hunk", "Update hunk does not contain any lines", lineNumber + 1);
     }
@@ -477,63 +568,12 @@ function parseUpdateFileChunk(
         isEndOfFile: false,
     };
 
-    let parsedLines = 0;
-    for (const line of lines.slice(startIndex)) {
-        if (line === EOF_MARKER) {
-            if (parsedLines === 0) {
-                throw new ApplyPatchParseError(
-                    "invalid_hunk",
-                    "Update hunk does not contain any lines",
-                    lineNumber + 1,
-                );
-            }
-            chunk.isEndOfFile = true;
-            parsedLines += 1;
-            break;
-        }
-
-        if (line.length === 0) {
-            chunk.oldLines.push("");
-            chunk.newLines.push("");
-            parsedLines += 1;
-            continue;
-        }
-
-        switch (line[0]) {
-            case " ":
-                chunk.oldLines.push(line.slice(1));
-                chunk.newLines.push(line.slice(1));
-                parsedLines += 1;
-                break;
-            case "+":
-                chunk.newLines.push(line.slice(1));
-                parsedLines += 1;
-                break;
-            case "-":
-                chunk.oldLines.push(line.slice(1));
-                parsedLines += 1;
-                break;
-            default:
-                if (parsedLines === 0) {
-                    throw new ApplyPatchParseError(
-                        "invalid_hunk",
-                        `Unexpected line found in update hunk: '${line}'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)`,
-                        lineNumber + 1,
-                    );
-                }
-                traceLine(
-                    trace,
-                    `chunk: context=${changeContext ?? "<none>"} old=${chunk.oldLines.length} new=${chunk.newLines.length} eof=${chunk.isEndOfFile} parsed=${parsedLines + startIndex}`,
-                );
-                return { chunk, linesParsed: parsedLines + startIndex };
-        }
-    }
-
+    const parsedLines = readChunkBody(chunk, lines.slice(startIndex), lineNumber) + startIndex;
     traceLine(
         trace,
-        `chunk: context=${changeContext ?? "<none>"} old=${chunk.oldLines.length} new=${chunk.newLines.length} eof=${chunk.isEndOfFile} parsed=${parsedLines + startIndex}`,
+        `chunk: context=${changeContext ?? "<none>"} old=${chunk.oldLines.length} new=${chunk.newLines.length} eof=${chunk.isEndOfFile} parsed=${parsedLines}`,
     );
-    return { chunk, linesParsed: parsedLines + startIndex };
+    return { chunk, linesParsed: parsedLines };
 }
 
 type LineComparator = (line: string, patternLine: string) => boolean;
@@ -640,6 +680,82 @@ function findSequenceFuzzy(
     return { index: null, score: bestScore };
 }
 
+type SeekOutcome =
+    | { readonly status: "found"; readonly index: number; readonly detail?: string }
+    | { readonly status: "missed"; readonly detail?: string }
+    | { readonly status: "skipped" };
+
+interface SeekStrategy {
+    readonly key: string;
+    readonly find: () => SeekOutcome;
+}
+
+function toOutcome(index: number | null): SeekOutcome {
+    return index === null ? { status: "missed" } : { status: "found", index };
+}
+
+function seekTraceLine(key: string, outcome: SeekOutcome): string {
+    switch (outcome.status) {
+        case "found":
+            return `seek:${key}=${outcome.index}${outcome.detail ?? ""}`;
+        case "missed":
+            return `seek:${key}=none${outcome.detail ?? ""}`;
+        case "skipped":
+            return `seek:${key}=skipped`;
+    }
+}
+
+function seekUnescaped(
+    lines: string[],
+    pattern: string[],
+    searchStart: number,
+    lastIndex: number,
+): SeekOutcome {
+    const unescapedPattern = pattern.map((line) => unescapeString(line));
+    if (!unescapedPattern.some((line, index) => line !== pattern[index])) {
+        return { status: "skipped" };
+    }
+    const normalizedLine = (line: string): string => normalizeConfusables(line).trim();
+    return toOutcome(
+        findSequenceWithNormalizer(lines, unescapedPattern.map(normalizedLine), searchStart, lastIndex, normalizedLine),
+    );
+}
+
+function seekFuzzy(lines: string[], pattern: string[], searchStart: number, lastIndex: number): SeekOutcome {
+    const result = findSequenceFuzzy(lines, pattern, searchStart, lastIndex);
+    if (result.index === null) {
+        return { status: "missed", detail: ` best=${result.score.toFixed(3)}` };
+    }
+    return { status: "found", index: result.index, detail: ` score=${result.score.toFixed(3)}` };
+}
+
+// The tolerances, most exact first. Order is the point: the first tier that
+// finds a place wins, and each `key` is the name its trace line uses.
+function seekStrategies(
+    lines: string[],
+    pattern: string[],
+    searchStart: number,
+    lastIndex: number,
+): SeekStrategy[] {
+    const compareWith = (compareLine: LineComparator): SeekOutcome =>
+        toOutcome(findSequenceWithComparator(lines, pattern, searchStart, lastIndex, compareLine));
+    const normalizeWith = (normalizeLine: LineNormalizer, patternLines: string[]): SeekOutcome =>
+        toOutcome(
+            findSequenceWithNormalizer(lines, patternLines.map(normalizeLine), searchStart, lastIndex, normalizeLine),
+        );
+    const normalizedLine = (line: string): string => normalizeConfusables(line).trim();
+    return [
+        { key: "exact", find: () => compareWith((line, target) => line === target) },
+        { key: "trim_end", find: () => compareWith((line, target) => line.trimEnd() === target.trimEnd()) },
+        { key: "trim", find: () => compareWith((line, target) => line.trim() === target.trim()) },
+        { key: "unescaped", find: () => seekUnescaped(lines, pattern, searchStart, lastIndex) },
+        { key: "normalised", find: () => normalizeWith(normalizedLine, pattern) },
+        { key: "whitespace", find: () => normalizeWith(normalizeWhitespace, pattern) },
+        { key: "indent", find: () => toOutcome(findSequenceWithIndentation(lines, pattern, searchStart, lastIndex)) },
+        { key: "fuzzy", find: () => seekFuzzy(lines, pattern, searchStart, lastIndex) },
+    ];
+}
+
 function seekSequence(
     lines: string[],
     pattern: string[],
@@ -660,104 +776,71 @@ function seekSequence(
     const searchStart = eof && lines.length >= pattern.length ? lines.length - pattern.length : start;
     const lastIndex = lines.length - pattern.length;
 
-    const exactIndex = findSequenceWithComparator(
-        lines,
-        pattern,
-        searchStart,
-        lastIndex,
-        (line, target) => line === target,
-    );
-    if (exactIndex !== null) {
-        traceLine(trace, `seek:exact=${exactIndex}`);
-        return exactIndex;
-    }
-    traceLine(trace, "seek:exact=none");
-
-    const trimEndIndex = findSequenceWithComparator(
-        lines,
-        pattern,
-        searchStart,
-        lastIndex,
-        (line, target) => line.trimEnd() === target.trimEnd(),
-    );
-    if (trimEndIndex !== null) {
-        traceLine(trace, `seek:trim_end=${trimEndIndex}`);
-        return trimEndIndex;
-    }
-    traceLine(trace, "seek:trim_end=none");
-
-    const trimIndex = findSequenceWithComparator(
-        lines,
-        pattern,
-        searchStart,
-        lastIndex,
-        (line, target) => line.trim() === target.trim(),
-    );
-    if (trimIndex !== null) {
-        traceLine(trace, `seek:trim=${trimIndex}`);
-        return trimIndex;
-    }
-    traceLine(trace, "seek:trim=none");
-
-    const unescapedPattern = pattern.map((line) => unescapeString(line));
-    const unescapedChanged = unescapedPattern.some((line, index) => line !== pattern[index]);
-    if (unescapedChanged) {
-        const normalizedUnescapedPattern = unescapedPattern.map((line) => normalizeConfusables(line).trim());
-        const unescapedIndex = findSequenceWithNormalizer(
-            lines,
-            normalizedUnescapedPattern,
-            searchStart,
-            lastIndex,
-            (line) => normalizeConfusables(line).trim(),
-        );
-        if (unescapedIndex !== null) {
-            traceLine(trace, `seek:unescaped=${unescapedIndex}`);
-            return unescapedIndex;
+    for (const strategy of seekStrategies(lines, pattern, searchStart, lastIndex)) {
+        const outcome = strategy.find();
+        traceLine(trace, seekTraceLine(strategy.key, outcome));
+        if (outcome.status === "found") {
+            return outcome.index;
         }
-        traceLine(trace, "seek:unescaped=none");
-    } else {
-        traceLine(trace, "seek:unescaped=skipped");
     }
-
-    const normalizedPattern = pattern.map((line) => normalizeConfusables(line).trim());
-    const normalizedIndex = findSequenceWithNormalizer(lines, normalizedPattern, searchStart, lastIndex, (line) =>
-        normalizeConfusables(line).trim(),
-    );
-    if (normalizedIndex !== null) {
-        traceLine(trace, `seek:normalised=${normalizedIndex}`);
-        return normalizedIndex;
-    }
-    traceLine(trace, "seek:normalised=none");
-
-    const whitespacePattern = pattern.map((line) => normalizeWhitespace(line));
-    const whitespaceIndex = findSequenceWithNormalizer(
-        lines,
-        whitespacePattern,
-        searchStart,
-        lastIndex,
-        normalizeWhitespace,
-    );
-    if (whitespaceIndex !== null) {
-        traceLine(trace, `seek:whitespace=${whitespaceIndex}`);
-        return whitespaceIndex;
-    }
-    traceLine(trace, "seek:whitespace=none");
-
-    const indentIndex = findSequenceWithIndentation(lines, pattern, searchStart, lastIndex);
-    if (indentIndex !== null) {
-        traceLine(trace, `seek:indent=${indentIndex}`);
-        return indentIndex;
-    }
-    traceLine(trace, "seek:indent=none");
-
-    const fuzzyResult = findSequenceFuzzy(lines, pattern, searchStart, lastIndex);
-    if (fuzzyResult.index !== null) {
-        traceLine(trace, `seek:fuzzy=${fuzzyResult.index} score=${fuzzyResult.score.toFixed(3)}`);
-        return fuzzyResult.index;
-    }
-    traceLine(trace, `seek:fuzzy=none best=${fuzzyResult.score.toFixed(3)}`);
-
     return null;
+}
+
+interface Insertion {
+    readonly index: number;
+    readonly mode: "eof" | "context";
+}
+
+interface MatchedSpan {
+    readonly index: number;
+    readonly length: number;
+    readonly newLines: string[];
+}
+
+function seekChangeContext(
+    lines: string[],
+    changeContext: string,
+    lineIndex: number,
+    path: string,
+    trace?: ApplyPatchTrace,
+): number {
+    const contextIndex = seekSequence(lines, [changeContext], lineIndex, false, trace);
+    if (contextIndex === null) {
+        throw new ApplyPatchComputeError(`Failed to find context '${changeContext}' in ${path}`);
+    }
+    traceLine(trace, `context_found: index=${contextIndex}`);
+    return contextIndex + 1;
+}
+
+function resolveInsertion(chunk: UpdateFileChunk, lines: string[], lineIndex: number): Insertion {
+    if (chunk.changeContext && !chunk.isEndOfFile) {
+        return { index: Math.min(lineIndex, lines.length), mode: "context" };
+    }
+    const endIndex = lines.length > 0 && lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+    return { index: endIndex, mode: "eof" };
+}
+
+function seekChunkOldLines(
+    lines: string[],
+    chunk: UpdateFileChunk,
+    lineIndex: number,
+    trace?: ApplyPatchTrace,
+): MatchedSpan | null {
+    let pattern = chunk.oldLines;
+    let newLines = chunk.newLines;
+    let found = seekSequence(lines, pattern, lineIndex, chunk.isEndOfFile, trace);
+    if (found === null && pattern.length > 0 && pattern[pattern.length - 1] === "") {
+        pattern = pattern.slice(0, -1);
+        if (newLines.length > 0 && newLines[newLines.length - 1] === "") {
+            newLines = newLines.slice(0, -1);
+        }
+        traceLine(trace, "pattern_trimmed_for_eof");
+        found = seekSequence(lines, pattern, lineIndex, chunk.isEndOfFile, trace);
+    }
+    if (found === null) {
+        return null;
+    }
+    return { index: found, length: pattern.length, newLines };
 }
 
 function computeReplacements(
@@ -777,50 +860,23 @@ function computeReplacements(
             `compute_chunk: index=${chunkIndex} context=${chunk.changeContext ?? "<none>"} old=${chunk.oldLines.length} new=${chunk.newLines.length} eof=${chunk.isEndOfFile}`,
         );
         if (chunk.changeContext) {
-            const contextIndex = seekSequence(originalLines, [chunk.changeContext], lineIndex, false, trace);
-            if (contextIndex === null) {
-                throw new ApplyPatchComputeError(`Failed to find context '${chunk.changeContext}' in ${path}`);
-            }
-            traceLine(trace, `context_found: index=${contextIndex}`);
-            lineIndex = contextIndex + 1;
+            lineIndex = seekChangeContext(originalLines, chunk.changeContext, lineIndex, path, trace);
         }
 
         if (chunk.oldLines.length === 0) {
-            let insertionIndex =
-                originalLines.length > 0 && originalLines[originalLines.length - 1] === ""
-                    ? originalLines.length - 1
-                    : originalLines.length;
-            let insertionMode = "eof";
-            if (chunk.changeContext && !chunk.isEndOfFile) {
-                insertionIndex = Math.min(lineIndex, originalLines.length);
-                insertionMode = "context";
-            }
-            replacements.push([insertionIndex, 0, [...chunk.newLines]]);
-            traceLine(trace, `insert_at: index=${insertionIndex} mode=${insertionMode} lines=${chunk.newLines.length}`);
+            const insertion = resolveInsertion(chunk, originalLines, lineIndex);
+            replacements.push([insertion.index, 0, [...chunk.newLines]]);
+            traceLine(trace, `insert_at: index=${insertion.index} mode=${insertion.mode} lines=${chunk.newLines.length}`);
             continue;
         }
 
-        let pattern = chunk.oldLines;
-        let newSlice = chunk.newLines;
-        let found = seekSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile, trace);
-
-        if (found === null && pattern.length > 0 && pattern[pattern.length - 1] === "") {
-            pattern = pattern.slice(0, -1);
-            if (newSlice.length > 0 && newSlice[newSlice.length - 1] === "") {
-                newSlice = newSlice.slice(0, -1);
-            }
-            traceLine(trace, "pattern_trimmed_for_eof");
-            found = seekSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile, trace);
+        const span = seekChunkOldLines(originalLines, chunk, lineIndex, trace);
+        if (span === null) {
+            throw new ApplyPatchComputeError(`Failed to find expected lines in ${path}:\n${chunk.oldLines.join("\n")}`);
         }
-
-        if (found !== null) {
-            replacements.push([found, pattern.length, [...newSlice]]);
-            traceLine(trace, `match_found: index=${found} old_len=${pattern.length} new_len=${newSlice.length}`);
-            lineIndex = found + pattern.length;
-            continue;
-        }
-
-        throw new ApplyPatchComputeError(`Failed to find expected lines in ${path}:\n${chunk.oldLines.join("\n")}`);
+        replacements.push([span.index, span.length, [...span.newLines]]);
+        traceLine(trace, `match_found: index=${span.index} old_len=${span.length} new_len=${span.newLines.length}`);
+        lineIndex = span.index + span.length;
     }
 
     replacements.sort((left, right) => left[0] - right[0]);
@@ -872,89 +928,97 @@ async function deriveNewContentsFromChunks(
     return newLines.join("\n");
 }
 
+async function runFileOperation(operation: () => Promise<void>, failure: string): Promise<void> {
+    try {
+        await operation();
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ApplyPatchIoError(`${failure}: ${message}`);
+    }
+}
+
+async function applyAddHunk(hunk: AddFileHunk, cwd: string, trace?: ApplyPatchTrace): Promise<string> {
+    traceLine(trace, `apply:add path=${hunk.path}`);
+    const fullPath = await resolvePathWithinCwd(cwd, hunk.path, true, trace);
+    await runFileOperation(() => writeFileExclusive(fullPath, hunk.contents), `Failed to write file ${hunk.path}`);
+    return hunk.path;
+}
+
+async function applyDeleteHunk(hunk: DeleteFileHunk, cwd: string, trace?: ApplyPatchTrace): Promise<string> {
+    traceLine(trace, `apply:delete path=${hunk.path}`);
+    const fullPath = await resolvePathWithinCwd(cwd, hunk.path, false, trace);
+    await runFileOperation(() => rm(fullPath), `Failed to delete file ${hunk.path}`);
+    return hunk.path;
+}
+
+async function resolveMoveDestination(
+    cwd: string,
+    hunk: UpdateFileHunk,
+    sourcePath: string,
+    trace?: ApplyPatchTrace,
+): Promise<string | null> {
+    if (!hunk.movePath) {
+        return null;
+    }
+    const movePath = await resolvePathWithinCwd(cwd, hunk.movePath, true, trace);
+    if (movePath === sourcePath) {
+        traceLine(trace, "move_path_same_as_source");
+        return null;
+    }
+    return movePath;
+}
+
+async function applyUpdateHunk(hunk: UpdateFileHunk, cwd: string, trace?: ApplyPatchTrace): Promise<string> {
+    traceLine(trace, `apply:update path=${hunk.path} move=${hunk.movePath ?? "<none>"}`);
+    const sourcePath = await resolvePathWithinCwd(cwd, hunk.path, false, trace);
+    const newContents = await deriveNewContentsFromChunks(sourcePath, hunk.path, hunk.chunks, trace);
+    const movePath = await resolveMoveDestination(cwd, hunk, sourcePath, trace);
+    if (movePath === null) {
+        await runFileOperation(() => writeFileReplace(sourcePath, newContents), `Failed to write file ${hunk.path}`);
+        return hunk.path;
+    }
+    await runFileOperation(
+        () => writeFileExclusive(movePath, newContents),
+        `Failed to write file ${hunk.movePath}`,
+    );
+    await runFileOperation(() => rm(sourcePath), `Failed to remove original ${hunk.path}`);
+    return hunk.movePath ?? hunk.path;
+}
+
+function applyHunk(hunk: Hunk, cwd: string, trace?: ApplyPatchTrace): Promise<string> {
+    switch (hunk.type) {
+        case "add":
+            return applyAddHunk(hunk, cwd, trace);
+        case "delete":
+            return applyDeleteHunk(hunk, cwd, trace);
+        case "update":
+            return applyUpdateHunk(hunk, cwd, trace);
+        default: {
+            const exhaustiveCheck: never = hunk;
+            void exhaustiveCheck;
+            return Promise.reject(new ApplyPatchIoError("Unsupported hunk type"));
+        }
+    }
+}
+
+const AFFECTED_KIND: Readonly<Record<Hunk["type"], keyof AffectedPaths>> = {
+    add: "added",
+    delete: "deleted",
+    update: "modified",
+};
+
 async function applyHunksToFiles(hunks: Hunk[], cwd: string, trace?: ApplyPatchTrace): Promise<AffectedPaths> {
     if (hunks.length === 0) {
         traceLine(trace, "apply: no_hunks");
         throw new ApplyPatchIoError("No files were modified.");
     }
 
-    const added: string[] = [];
-    const modified: string[] = [];
-    const deleted: string[] = [];
-
+    const affected: AffectedPaths = { added: [], modified: [], deleted: [] };
     for (const hunk of hunks) {
-        switch (hunk.type) {
-            case "add": {
-                traceLine(trace, `apply:add path=${hunk.path}`);
-                const fullPath = await resolvePathWithinCwd(cwd, hunk.path, true, trace);
-                try {
-                    await writeFileExclusive(fullPath, hunk.contents);
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    throw new ApplyPatchIoError(`Failed to write file ${hunk.path}: ${message}`);
-                }
-                added.push(hunk.path);
-                break;
-            }
-            case "delete": {
-                traceLine(trace, `apply:delete path=${hunk.path}`);
-                const fullPath = await resolvePathWithinCwd(cwd, hunk.path, false, trace);
-                try {
-                    await rm(fullPath);
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    throw new ApplyPatchIoError(`Failed to delete file ${hunk.path}: ${message}`);
-                }
-                deleted.push(hunk.path);
-                break;
-            }
-            case "update": {
-                traceLine(trace, `apply:update path=${hunk.path} move=${hunk.movePath ?? "<none>"}`);
-                const sourcePath = await resolvePathWithinCwd(cwd, hunk.path, false, trace);
-                const newContents = await deriveNewContentsFromChunks(sourcePath, hunk.path, hunk.chunks, trace);
-                let resolvedMovePath = hunk.movePath
-                    ? await resolvePathWithinCwd(cwd, hunk.movePath, true, trace)
-                    : null;
-                if (resolvedMovePath && resolvedMovePath === sourcePath) {
-                    traceLine(trace, "move_path_same_as_source");
-                    resolvedMovePath = null;
-                }
-                if (resolvedMovePath) {
-                    const destPath = resolvedMovePath;
-                    try {
-                        await writeFileExclusive(destPath, newContents);
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        throw new ApplyPatchIoError(`Failed to write file ${hunk.movePath}: ${message}`);
-                    }
-                    try {
-                        await rm(sourcePath);
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        throw new ApplyPatchIoError(`Failed to remove original ${hunk.path}: ${message}`);
-                    }
-                    const movePath = hunk.movePath ?? hunk.path;
-                    modified.push(movePath);
-                } else {
-                    try {
-                        await writeFileReplace(sourcePath, newContents);
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        throw new ApplyPatchIoError(`Failed to write file ${hunk.path}: ${message}`);
-                    }
-                    modified.push(hunk.path);
-                }
-                break;
-            }
-            default: {
-                const exhaustiveCheck: never = hunk;
-                void exhaustiveCheck;
-                throw new ApplyPatchIoError("Unsupported hunk type");
-            }
-        }
+        const path = await applyHunk(hunk, cwd, trace);
+        affected[AFFECTED_KIND[hunk.type]].push(path);
     }
-
-    return { added, modified, deleted };
+    return affected;
 }
 
 function printSummary(affected: AffectedPaths): string {

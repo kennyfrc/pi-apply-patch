@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ApplyPatchRunOptions, ApplyPatchRunResult } from "./runner.js";
 import { runApplyPatchBinary } from "./runner.js";
+import { formatState, formatStream } from "./sandbox-report.js";
 
 const SANDBOX_LABEL = "<sandbox>";
 
@@ -60,46 +61,6 @@ function extractOperations(patch: string): string[] {
         }
     }
     return operations;
-}
-
-function formatStream(stream: string | null): string {
-    if (!stream) {
-        return "<empty>";
-    }
-    if (stream.length === 0) {
-        return "<empty>";
-    }
-    const normalized = stream.replace(/\r\n/g, "\n");
-    return normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
-}
-
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-    return error instanceof Error && "code" in error;
-}
-
-async function readFileIfExists(path: string): Promise<string | null> {
-    try {
-        return await readFile(path, "utf8");
-    } catch (error) {
-        if (isErrnoException(error) && error.code === "ENOENT") {
-            return null;
-        }
-        throw error;
-    }
-}
-
-async function formatState(root: string, paths: string[]): Promise<string[]> {
-    const lines: string[] = [];
-    for (const relativePath of paths) {
-        const fullPath = join(root, relativePath);
-        const contents = await readFileIfExists(fullPath);
-        if (contents === null) {
-            lines.push(`- ${relativePath}: <missing>`);
-        } else {
-            lines.push(`- ${relativePath}: ${JSON.stringify(contents)}`);
-        }
-    }
-    return lines;
 }
 
 async function runApplyPatchCharacterizationWithRunner(runner: ApplyPatchRunner): Promise<string> {
