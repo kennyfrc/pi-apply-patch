@@ -1,6 +1,6 @@
 {
   "name": "pi-apply-patch",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "OpenAI Codex apply_patch file-editing tool for GPT models on Pi",
   "keywords": [
     "pi-package",
@@ -35,10 +35,10 @@
     "typescript": "^5.5.0",
     "vitest": "^3.2.4",
     "@types/node": "^22.0.0",
-    "@earendil-works/pi-agent-core": "0.80.10",
-    "@earendil-works/pi-ai": "0.80.10",
-    "@earendil-works/pi-coding-agent": "0.80.10",
-    "@earendil-works/pi-tui": "0.80.10",
+    "@earendil-works/pi-agent-core": "0.85.1",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-tui": "0.85.1",
     "typebox": "*"
   },
   "peerDependencies": {
